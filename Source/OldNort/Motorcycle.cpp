@@ -23,6 +23,7 @@ AMotorcycle::AMotorcycle()
 
 	Speed = 450.0f;
 	MaxSpeed = 650.0f;
+	Displacement = -180.0f;
 
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
 }
@@ -31,6 +32,7 @@ AMotorcycle::AMotorcycle()
 void AMotorcycle::BeginPlay()
 {
 	Super::BeginPlay();
+	StartCollisionActorsSpawnTimer();
 }
 
 // Called every frame
@@ -54,33 +56,82 @@ void AMotorcycle::Tick(float DeltaTime)
 void AMotorcycle::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
-	InputComponent->BindAxis("CameraPitch", this, &AMotorcycle::PitchCamera);
-	InputComponent->BindAxis("CameraYaw", this, &AMotorcycle::YawCamera);
-	InputComponent->BindAction("PawnRotationRight", IE_Pressed, this, &AMotorcycle::PawnRotationRight);
-	InputComponent->BindAction("PawnRotationLeft", IE_Pressed, this, &AMotorcycle::PawnRotationLeft);
-}
-
-void AMotorcycle::PawnRotationRight()
-{
-	FRotator NewActorRotation = GetActorRotation();
-	NewActorRotation.Yaw = GetActorRotation().Yaw + 90.0f;
-	SetActorRotation(NewActorRotation);
-}
-
-void AMotorcycle::PawnRotationLeft()
-{
-	FRotator NewActorRotation = GetActorRotation();
-	NewActorRotation.Yaw = GetActorRotation().Yaw - 90.0f;
-	SetActorRotation(NewActorRotation);
+	InputComponent->BindAxis("CameraPitch", this, &AMotorcycle::TurnCameraPitch);
+	InputComponent->BindAxis("CameraYaw", this, &AMotorcycle::TurnCameraYaw);
+	InputComponent->BindAction("PawnRotationRight", IE_Pressed, this, &AMotorcycle::OnTurnRightPressed);
+	InputComponent->BindAction("PawnRotationLeft", IE_Pressed, this, &AMotorcycle::OnTurnLeftPressed);
 }
 
 //Camera Yaw and Pitch Axis Rotation
-void AMotorcycle::PitchCamera(float AxisValue)
+void AMotorcycle::TurnCameraPitch(float AxisValue)
 {
 	CameraInput.Y = AxisValue;
 }
 
-void AMotorcycle::YawCamera(float AxisValue)
+void AMotorcycle::TurnCameraYaw(float AxisValue)
 {
 	CameraInput.X = AxisValue;
+}
+
+void AMotorcycle::SpawnBacklineCollisionActors()
+{
+	const FVector SpawnLocation = GetActorLocation() + GetActorForwardVector() * Displacement;
+	//DrawDebugSphere(GetWorld(),SpawnLocation,3.0f, 12, FColor::Red,false,5.0f,0,3.0f);
+	GetWorld()->SpawnActor<ABackLineCollisionActor>(CollisionActorClass, SpawnLocation, GetActorRotation());
+}
+
+void AMotorcycle::StartCollisionActorsSpawnTimer()
+{
+	GetWorld()->GetTimerManager().SetTimer(SpawnCoollisionActorTimer, this, &AMotorcycle::SpawnBacklineCollisionActors,
+	                                       SpawnCollisionActorDelay, true);
+}
+
+void AMotorcycle::OnTurnRightPressed()
+{
+	if (bCanTurn)	
+	{
+		SpawnBacklineCollisionActors();
+		Turn(false);
+		bCanTurn = false;
+		GetWorld()->GetTimerManager().SetTimer(EnableInputTimer, this, &AMotorcycle::EnableTurn, EnableTurnDelay,
+		                                       false);
+	}
+}
+
+void AMotorcycle::OnTurnLeftPressed()
+{
+	if (bCanTurn)
+	{
+		SpawnBacklineCollisionActors();
+		Turn(true);
+		bCanTurn = false;
+		GetWorld()->GetTimerManager().SetTimer(EnableInputTimer, this, &AMotorcycle::EnableTurn, EnableTurnDelay,
+		                                       false);
+	}
+}
+
+void AMotorcycle::Turn(const bool bShouldTurnLeft)
+{
+	float TurnAngle = 0.0f;
+	if (bShouldTurnLeft)
+	{
+		const FVector NewLocation = GetActorLocation() - GetActorRightVector() * 180.0f;
+		SetActorLocation(NewLocation);
+		TurnAngle = -90.0f;
+	}
+	else
+	{
+		const FVector NewLocation = GetActorLocation() + GetActorRightVector() * 180.0f;
+		SetActorLocation(NewLocation);
+		TurnAngle = 90.0f;
+	}
+	FRotator NewActorRotation = GetActorRotation();
+	NewActorRotation.Yaw = GetActorRotation().Yaw + TurnAngle;
+	SetActorRotation(NewActorRotation);
+	StartCollisionActorsSpawnTimer();
+}
+
+void AMotorcycle::EnableTurn()
+{
+	bCanTurn = true;
 }
