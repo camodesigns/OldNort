@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "BackLineCollisionActor.h"
 #include "GameFramework/Pawn.h"
 #include "Motorcycle.generated.h"
 
@@ -24,15 +25,18 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override;
 
 private:
+	// Distance between de Spawner and the pawn location
+	UPROPERTY(EditAnywhere)
+	float Displacement;
+	UPROPERTY(EditAnywhere)
 	float Speed;
 	float MaxSpeed;
 	FVector2D CameraInput;
-	//Pawn  yaw Rotation
-	void PawnRotationLeft();
-	void PawnRotationRight();
 	//Camera Pitch and Yaw rotation
-	void PitchCamera(float AxisValue);
-	void YawCamera(float AxisValue);
+	void TurnCameraPitch(float AxisValue);
+	void TurnCameraYaw(float AxisValue);
+	
+	bool bCanTurn = true;
 
 protected:
 	UPROPERTY(EditAnywhere)
@@ -43,4 +47,24 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	class USpringArmComponent* SpringArmComponent;
+
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<ABackLineCollisionActor> CollisionActorClass;
+
+	// Timers
+	FTimerHandle SpawnCoollisionActorTimer;
+	FTimerHandle EnableInputTimer;
+
+private:
+	void SpawnBacklineCollisionActors();
+	void StartCollisionActorsSpawnTimer();
+	void OnTurnRightPressed();
+	void OnTurnLeftPressed();
+	void Turn(const bool bShouldTurnLeft);
+	void EnableTurn();
+	//void TurnOnDelay();
+	UPROPERTY(EditAnywhere)
+	float EnableTurnDelay;
+	UPROPERTY(EditAnywhere)
+	float SpawnCollisionActorDelay;
 };
