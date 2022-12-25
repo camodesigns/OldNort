@@ -1,5 +1,6 @@
 #include "Motorcycle.h"
 #include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 
 // Sets default values
@@ -15,16 +16,24 @@ AMotorcycle::AMotorcycle()
 	CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("CameraComponent"));
 	CameraComponent->SetupAttachment(SpringArmComponent);
 	SpringArmComponent->SetupAttachment(GetRootComponent());
-
+	
+	//Set the Arm Location and Rotation
 	SpringArmComponent->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 00.0f), FRotator(-25.0f, 0.0f, 0.0f));
 	SpringArmComponent->TargetArmLength = 800.f;
 	SpringArmComponent->bEnableCameraLag = true;
 	SpringArmComponent->CameraLagSpeed = 3.0f;
 
+	TriggerCapsule = CreateDefaultSubobject<UCapsuleComponent>(TEXT("trigger Capsule"));
+	TriggerCapsule ->InitCapsuleSize(128.314102f,183.722122f);
+	TriggerCapsule->SetCollisionProfileName(TEXT("Trigger"));
+	TriggerCapsule->SetupAttachment(RootComponent);
+ 
+	//
+
 	Speed = 450.0f;
 	MaxSpeed = 650.0f;
 	Displacement = -180.0f;
-
+	
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
 }
 
@@ -33,6 +42,8 @@ void AMotorcycle::BeginPlay()
 {
 	Super::BeginPlay();
 	StartCollisionActorsSpawnTimer();
+
+	TriggerCapsule->OnComponentBeginOverlap.AddDynamic(this, &AMotorcycle::CollideBaclineCollisionActors);
 }
 
 // Called every frame
@@ -44,11 +55,11 @@ void AMotorcycle::Tick(float DeltaTime)
 	SetActorLocation(NewLocation);
 
 	FRotator NewRotationYaw = SpringArmComponent->GetComponentRotation();
-	NewRotationYaw.Yaw = FMath::Clamp(-80.0f, NewRotationYaw.Yaw + CameraInput.X, 15.0f);
+	NewRotationYaw.Yaw = FMath::Clamp(-360.0f, NewRotationYaw.Yaw + CameraInput.X, 100.0f);
 	SpringArmComponent->SetWorldRotation(NewRotationYaw);
 
 	FRotator NewRotationPitch = SpringArmComponent->GetComponentRotation();
-	NewRotationPitch.Pitch = FMath::Clamp(NewRotationPitch.Pitch + CameraInput.Y, -80.0f, 15.0f);
+	NewRotationPitch.Pitch = FMath::Clamp(NewRotationPitch.Pitch + CameraInput.Y, -360.0f, 100.0f);
 	SpringArmComponent->SetWorldRotation(NewRotationPitch);
 }
 
@@ -134,4 +145,17 @@ void AMotorcycle::Turn(const bool bShouldTurnLeft)
 void AMotorcycle::EnableTurn()
 {
 	bCanTurn = true;
+}
+
+void AMotorcycle::CollideBaclineCollisionActors(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if(OtherActor && (OtherActor!=this)&& OtherComp )
+	{
+		if(GEngine)
+		{
+			//Print a test of collison, using a example text
+			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("You are death"));
+		}
+	}
 }
