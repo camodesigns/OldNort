@@ -31,11 +31,17 @@ private:
 	UPROPERTY(EditAnywhere)
 	float Speed;
 	float MaxSpeed;
+	float MaxDeathCount;
+	float HasAlive = true;
 	FVector2D CameraInput;
 	//Camera Pitch and Yaw rotation
 	void TurnCameraPitch(float AxisValue);
 	void TurnCameraYaw(float AxisValue);
-	
+	UPROPERTY(EditAnywhere)
+	float EnableTurnDelay;
+	UPROPERTY(EditAnywhere)
+	float SpawnCollisionActorDelay;
+	//Condition tu run a Turn function
 	bool bCanTurn = true;
 
 protected:
@@ -51,6 +57,9 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<ABackLineCollisionActor> CollisionActorClass;
 
+	UPROPERTY(EditAnywhere,Category="Trigger Capsule")
+	class UCapsuleComponent* TriggerCapsule;
+	
 	// Timers
 	FTimerHandle SpawnCoollisionActorTimer;
 	FTimerHandle EnableInputTimer;
@@ -62,9 +71,10 @@ private:
 	void OnTurnLeftPressed();
 	void Turn(const bool bShouldTurnLeft);
 	void EnableTurn();
+	void HasCrash();
+	UFUNCTION()
+	void CollideBaclineCollisionActors(class UPrimitiveComponent* OverlappedComp, class AActor* OtherActor, class UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	void CollidePlayer();
 	//void TurnOnDelay();
-	UPROPERTY(EditAnywhere)
-	float EnableTurnDelay;
-	UPROPERTY(EditAnywhere)
-	float SpawnCollisionActorDelay;
+
 };
