@@ -1,8 +1,18 @@
 #include "Motorcycle.h"
+#include "MotorcyclePlayerState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Engine/LevelScriptActor.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "EngineUtils.h"
+#include "Motorcycle2.h"
+#include "OldNortGameModeBase.h"
+#include "Engine/TargetPoint.h"
 
+
+const FName AMotorcycle::MyTagName("PlayerOne");
+const FString AMotorcycle::MyLevelName("Minimal_Default");
 // Sets default values
 AMotorcycle::AMotorcycle()
 {
@@ -16,7 +26,7 @@ AMotorcycle::AMotorcycle()
 	CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("CameraComponent"));
 	CameraComponent->SetupAttachment(SpringArmComponent);
 	SpringArmComponent->SetupAttachment(GetRootComponent());
-	
+
 	//Set the Arm Location and Rotation
 	SpringArmComponent->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, 00.0f), FRotator(-25.0f, 0.0f, 0.0f));
 	SpringArmComponent->TargetArmLength = 800.f;
@@ -24,17 +34,28 @@ AMotorcycle::AMotorcycle()
 	SpringArmComponent->CameraLagSpeed = 3.0f;
 
 	TriggerCapsule = CreateDefaultSubobject<UCapsuleComponent>(TEXT("trigger Capsule"));
-	TriggerCapsule ->InitCapsuleSize(128.314102f,183.722122f);
+	TriggerCapsule->InitCapsuleSize(128.314102f, 183.722122f);
 	TriggerCapsule->SetCollisionProfileName(TEXT("Trigger"));
 	TriggerCapsule->SetupAttachment(RootComponent);
- 
+
 	//
 
-	Speed = 450.0f;
-	MaxSpeed = 650.0f;
-	Displacement = -180.0f;
-	
-	AutoPossessPlayer = EAutoReceiveInput::Player0;
+	Speed = 500.0f;
+	Displacement = -360.0f;
+
+	RespawnCountdawn = 3.0f;
+	bCanDisable = false;
+	bCanRespawn = false;
+	FirstRespawnInWorld = nullptr;
+	SecondRespawnInWorld = nullptr;
+	ThirdRespawnInWorld = nullptr;
+	TotalScore = 0;
+	bIsDead = false;
+	bIsTwoPlayerGame = false;
+
+	RespawnLocations.Empty();
+
+	this->Tags.Add(FName("Player1"));
 }
 
 // Called when the game starts or when spawned
@@ -42,8 +63,9 @@ void AMotorcycle::BeginPlay()
 {
 	Super::BeginPlay();
 	StartCollisionActorsSpawnTimer();
-
-	TriggerCapsule->OnComponentBeginOverlap.AddDynamic(this, &AMotorcycle::CollideBaclineCollisionActors);
+	FindPlayerState();
+	FindRespawnLocation();
+	TriggerCapsule->OnComponentBeginOverlap.AddDynamic(this, &AMotorcycle::CollideBacklineCollisionActors);
 }
 
 // Called every frame
@@ -99,7 +121,7 @@ void AMotorcycle::StartCollisionActorsSpawnTimer()
 
 void AMotorcycle::OnTurnRightPressed()
 {
-	if (bCanTurn)	
+	if (bCanTurn)
 	{
 		SpawnBacklineCollisionActors();
 		Turn(false);
@@ -123,16 +145,16 @@ void AMotorcycle::OnTurnLeftPressed()
 
 void AMotorcycle::Turn(const bool bShouldTurnLeft)
 {
-	float TurnAngle = 0.0f;
+	float TurnAngle;
 	if (bShouldTurnLeft)
 	{
-		const FVector NewLocation = GetActorLocation() - GetActorRightVector() * 180.0f;
+		const FVector NewLocation = GetActorLocation() - GetActorRightVector() * TurnDisplacementDistance;
 		SetActorLocation(NewLocation);
 		TurnAngle = -90.0f;
 	}
 	else
 	{
-		const FVector NewLocation = GetActorLocation() + GetActorRightVector() * 180.0f;
+		const FVector NewLocation = GetActorLocation() + GetActorRightVector() * TurnDisplacementDistance;
 		SetActorLocation(NewLocation);
 		TurnAngle = 90.0f;
 	}
@@ -147,15 +169,120 @@ void AMotorcycle::EnableTurn()
 	bCanTurn = true;
 }
 
-void AMotorcycle::CollideBaclineCollisionActors(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+void AMotorcycle::CollideBacklineCollisionActors(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+                                                 UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep,
+                                                 const FHitResult& SweepResult)
 {
-	if(OtherActor && (OtherActor!=this)&& OtherComp )
+	if (!bIsDead && OtherActor && (OtherActor != this) && OtherComp)
 	{
-		if(GEngine)
+		bIsDead = true;
+		if (GEngine)
 		{
 			//Print a test of collison, using a example text
 			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("You are death"));
 		}
+
+		AMotorcyclePlayerState* PlayerState2 = Cast<AMotorcyclePlayerState>(UGameplayStatics::GetPlayerState(this, 1));
+		if (PlayerState2 != nullptr)
+		{
+			PlayerState2->TotalScore += 1;
+			// Check if score is enough to win
+			if (PlayerState2->TotalScore == PlayerState2->WinScore)
+			{
+				if (GEngine)
+				{
+					//Print a test of collision, using a example text
+					GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Winner P2"));
+					// If score is enough to win
+					
+					AOldNortGameModeBase* GameMode=Cast<AOldNortGameModeBase>(GetWorld()->GetAuthGameMode());
+					if(GameMode!=nullptr)
+					{
+						GameMode->OnPlayerWon(1);
+					}
+				}
+			}
+			else
+			{
+				// Else
+				// Disable player (explode, disappear, etc) -> remove collisions, movement, and visibility
+				DisablePlayer();
+				// Start timer to respawn
+				// When timer is up, call respawn
+			
+				GetWorld()->GetTimerManager().SetTimer(RespawnPlayerTimer, this, &AMotorcycle::Respawn,
+													   RespawnDelay, false);
+			}
+		}
 	}
+}
+
+void AMotorcycle::FindPlayerState()
+{
+	const APlayerController* PlMotorcycle = Cast<APlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+	if (PlMotorcycle)
+	{
+		MyPlayerState = Cast<AMotorcyclePlayerState>(PlMotorcycle->PlayerState);
+	}
+}
+
+void AMotorcycle::FindRespawnLocation()
+{
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(this, ATargetPoint::StaticClass(), FoundActors);
+
+	for (AActor* FoundActor : FoundActors)
+	{
+		RespawnLocations.Add(Cast<ATargetPoint>(FoundActor));
+	}
+}
+
+
+void AMotorcycle::DisablePlayer()
+{
+	Speed = 0.0f;
+	this->SetActorEnableCollision(false);
+	this->SetActorHiddenInGame(true);
+
+	GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Blue,TEXT("You are Dead"));
+}
+
+//Choose a Random target point for the respawn
+void AMotorcycle::ChooseRandomSpawnPoint()
+{
+	//Select a random value between 0-2, which is the size of the array
+	const int32 RandomValue = FMath::RandRange(0, 2);
+
+	if (RespawnLocations.IsValidIndex(RandomValue))
+	{
+		const ATargetPoint* LocationToRespawn = RespawnLocations[RandomValue];
+		if (LocationToRespawn != nullptr)
+		{
+			const FVector RespawnLocation = LocationToRespawn->GetActorLocation();
+			const FRotator RespawnRotation = LocationToRespawn->GetActorRotation();
+
+			//Set player Spawn Location an Rotation
+			SetActorLocation(RespawnLocation);
+			SetActorRotation(RespawnRotation);
+
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green,TEXT("Actor Position is Set"));
+		}
+	}
+}
+
+void AMotorcycle::Respawn()
+{
+	// Enable player -> enable collision, movement and visibility
+
+	//Set the ReSpawn Position to a Random Position of the positions array
+	ChooseRandomSpawnPoint();
+
+	this->SetActorHiddenInGame(false);
+	this->SetActorEnableCollision(true);
+
+	//Set Speed
+	Speed = 1000.0f;
+
+	// Set is dead to false
+	bIsDead = false;
 }
